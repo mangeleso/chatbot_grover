@@ -302,9 +302,9 @@ def display_products(data, with_price=False):
 
 
 		else:
-			print("Bot: Here are the montly price for the products: \n")
+			print("Bot: Here are the monthly price for the products: \n")
 			for prod,price  in data[['Product Name', 'Subscription Plan']].values:
-				print("Bot: The montly price for " + prod + " is: " + str(price) + " .")
+				print("Bot: The monthly price for " + prod + " is: " + str(price) + " .")
 
 
 
@@ -567,7 +567,7 @@ def search_price_print(search_product, products_df):
 
 	if len(product_names) > 0:
 		for prod in product_names:
-			found_prods = found_prods.loc[found_prods['Product Name'].str.contains(prod, case=False)]
+			found_prods = found_prods.loc[found_prods['Product Name'].str.contains(prod, case=False, regex=False)]
 
 	if len(brand_names) > 0:
 		for prod in brand_names:
@@ -600,30 +600,33 @@ def positive_answer(ans):
 
 
 def short_negative(ans): #Not, no, not at all
-	
-	if ans.lower() == 'n':
+	'''Check if an answer is negative, it contains a not for answer
+	'''
+	NEG = ['no', 'not', 'nope', 'nop']
+
+	if any(word in ans for word in NEG) and len(ans.split())==1:
 		return True
 
-	ans = ans.lower()
-	list_ans = ans.split()
+	if ans == 'n':
+		return 	True
 
-	for w in list_ans:
-		if 'no' in w:
-			return True
 
 	return False
+
+
 
 
 
 def question_interest(products):
 	''' Find out the interest product from a list of products 
 	'''
+	print()
 	print("Bot: Are you interested in any of the products shown y/n?")
 	ans = input("User: ")
-
+	clean_ans = preprocess_text(ans)
 
 	if positive_answer(ans):
-		clean_ans = preprocess_text(ans)
+		
 		entities = find_noun(clean_ans)
 
 		if len(products) == 1:
@@ -641,17 +644,21 @@ def question_interest(products):
 			entities = find_noun(clean_ans)
 
 
-			if 'all' in ans.lower():
+			if 'all' in clean_ans:
 				show_all(products)
+
+			elif short_negative(clean_ans) and len(entities) > 0:
+				respond(clean_ans)
 
 			else:
 				search_price_print(entities, products)
 
-	elif short_negative(ans): #its only a no
+
+	elif short_negative(clean_ans): #its only a no
 		print("Bot: I am sorry to hear that, we will have more products very soon!")
 
 	else:
-		respond(ans)
+		respond(clean_ans)
 
 	
 
