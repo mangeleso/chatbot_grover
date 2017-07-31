@@ -321,6 +321,7 @@ def is_in_list(list_1, list_2):
 
 def find_objects(list_entities, intent, verbs):
 	'''Filter out the the list of entities according to the intent 
+		it returns a DataFrame with the products found
 	'''
 
 	prod_df = df	
@@ -332,8 +333,6 @@ def find_objects(list_entities, intent, verbs):
 
 	#Search by product name
 	if intent == 1:
-	
-
 		product_names = find_names_in_products(list_entities)
 		product_synonyms = find_synonyms(list_entities)
 		product_brands = find_brands(list_entities)
@@ -343,9 +342,6 @@ def find_objects(list_entities, intent, verbs):
 		#	prod = prod_df.loc[prod_df['Product Name'].str.contains(pro, case=False, regex=False)]
 
 		return prod
-
-
-
 
 	##Seach by brands
 	elif intent == 2:
@@ -411,7 +407,7 @@ def find_objects(list_entities, intent, verbs):
 					return result 
 
 
-
+	#Dislike 
 	elif intent == 4:
 
 		n_verb = len(verbs)
@@ -450,14 +446,44 @@ def find_objects(list_entities, intent, verbs):
 
 
 		elif n_entities == 1: #Find something better
+
 			ent = list_entities[0]
 			#find products not same brand nor type nor name
-			if ent in BRANDS:
-				left_brands = BRANDS
-				left_brands.remove(ent)
-				#Found brand that user doesnt like
-				result = df.loc[df['Brand'].str.contains('|'.join(map(re.escape, left_brands)), case=False)]
-				return result
+
+			ent = convert_singular(ent)
+
+			if df_last_display.empty:
+				if ent in BRANDS:
+					left_brands = BRANDS
+					left_brands.remove(ent)
+					#Found brand that user doesnt like
+					result = df.loc[df['Brand'].str.contains('|'.join(map(re.escape, left_brands)), case=False)]
+					return result
+
+			else:
+				left_brands = [ x.lower() for x in df_last_display['Brand'].values]
+				left_brands = set(left_brands)
+
+				left_names = []
+
+
+				if ent in left_brands:
+					left_brands.remove(ent)
+					result = df_last_display.loc[df_last_display['Brand'].str.contains('|'.join(map(re.escape, left_brands)), case=False)]
+					return result
+
+				left_products = []
+				for prod_name in df_last_display['Product Name'].values:
+
+					if ent not in prod_name.lower():
+						left_products.append(prod_name)
+
+				if len(left_products) > 0:
+					result = df_last_display.loc[df_last_display['Product Name'].str.contains('|'.join(map(re.escape, left_products)), case=False)]
+					return result
+
+
+
 
 	return prod
 
@@ -484,6 +510,8 @@ def do_intent(intent, entities, verbs):
 def show_all(products):
 	'''It simply displays the product price of the products data frame
 	'''
+
+
 	for name, price in products[['Product Name', 'Subscription Plan']].values:
 			print("Bot: The montly price for " + name + " is: " + str(price) + " .")
 
@@ -530,25 +558,30 @@ def search_price_print(search_product, products_df):
 	'''
 
 	product_names = find_names_in_products(search_product)
+	brand_names = find_brands(search_product)
+	synonym_names = find_synonyms(search_product)
+	found_prods = products_df
 
-	if len(product_names) == 0:
-		print_error_msg()
-		return
 
-	one_product = products_df
+	#Check for brand/type/name  and for one or many words
 
-	if len(product_names) == 1:
-		one_product = products_df.loc[products_df['Product Name'].str.contains(product_names[0], case=False, regex=False)]
-
-	else:
+	if len(product_names) > 0:
 		for prod in product_names:
-			one_product = one_product.loc[one_product['Product Name'].str.contains(prod, case=False)]
+			found_prods = found_prods.loc[found_prods['Product Name'].str.contains(prod, case=False)]
 
-	if one_product.empty:
-		not_found()
-		return
+	if len(brand_names) > 0:
+		for prod in brand_names:
+			found_prods = found_prods.loc[found_prods['Brand'].str.contains(prod, case=False)]
 
-	show_all(one_product)
+	if len(synonym_names) > 0:
+		for prod in synonym_names:
+			found_prods = found_prods.loc[found_prods['Synonyms'].str.contains(prod, case=False)]
+
+
+	if found_prods.empty:
+		print_not_understand()
+	else:
+		show_all(found_prods)
 
 
 def positive_answer(ans):
@@ -568,11 +601,14 @@ def positive_answer(ans):
 
 def short_negative(ans): #Not, no, not at all
 	
+	if ans.lower() == 'n':
+		return True
+
 	ans = ans.lower()
 	list_ans = ans.split()
 
 	for w in list_ans:
-		if 'n' in w and len(list_ans) < 3:
+		if 'no' in w:
 			return True
 
 	return False
@@ -601,17 +637,20 @@ def question_interest(products):
 		else:
 			print("Bot: In which of the products are you interested?")
 			ans = input("User: ")
-			
+			clean_ans = preprocess_text(ans)
+			entities = find_noun(clean_ans)
+
+
 			if 'all' in ans.lower():
 				show_all(products)
 
 			else:
-				search_price_print(ans.lower().split(), products)
+				search_price_print(entities, products)
 
 	elif short_negative(ans): #its only a no
 		print("Bot: I am sorry to hear that, we will have more products very soon!")
 
-	else:  
+	else:
 		respond(ans)
 
 	
@@ -674,6 +713,8 @@ def respond(sentence):
 	'''Parse the user's input sentence and find candidate terms the best-fit response'''
 	cleaned = preprocess_text(sentence)
 
+
+
 	#parsed = TextBlob(cleaned)
 	#Loop through all the sentences, if more that one. To extract the most relevant
 	#response text across multiple sentences
@@ -712,6 +753,9 @@ if __name__ == '__main__':
 	try:
 		while True:
 			sentence = input("User: ")
+			if 'exit' in sentence.lower():
+				print('Bot: Have a nice day!')
+				break
 			read_process(sentence)
 
 	except KeyboardInterrupt:
