@@ -27,6 +27,13 @@ last_type_of_question = 0
 
 COLS = ['Product Id','Product Name', 'Brand', 'Category', 'Subscription Plan', 'Synonyms']
 
+LAST_TYPE = []
+LAST_PROD_NAME = []
+LAST_BRAND = []
+
+NOUNS_LAST_SEARCH = []
+VERB_LAST_SERACH = []
+
 
 #Brands names
 BRANDS = [x.lower() for x in list(set(df['Brand'].values))]
@@ -51,6 +58,8 @@ coffee =['coffee','coffee machine','smart coffe','smart coffee machine']
 vacuum = ['vacuum','vacuum cleaner','smart vacuum']
 PRODUCTS_TYPES = phone + drone + games + computing + wearables + assistant + coffee + vacuum + ['ios', 'android' , 'iphones', 'galaxy']
 YES = ['yes', 'yea',"affirmative", 'yey', 'yeah', 'alright', 'of course', 'sure', 'ok', 'okey', 'agreed', 'certainly', 'oki', 'absolutely', 'yay', 'for sure']
+
+
 
 def add_synonyms():
 	'''Append a columns called 'Synonyms' that stores the type of the product and synonyms of it.
@@ -90,8 +99,8 @@ def create_data():
 	#Requests 
 	show_price = ['show me price', 'how much', 'cost of', 'tell me the price', 'give me the price', 'how much money','price of']
 	show_me = ['show me', 'I want a', 'I need a', 'I wish a', 'I am looking for a', 'I look for a', 'show me a', 'I am interested','tell me about' ]
-	dont_like = ["I don't like", 'I hate', "I am not interested", "I have no interest"]
-	but_like = ['I like', 'show me something different', 'I prefer', 'I want']
+	dont_like = ["I don't like", 'I hate', "I am not interested",  "i dont want", "I don't want"]
+	but_like = ['I like', 'show me something different', 'I prefer', 'I want', 'i want' ]
 
 	#Generate dataset to train classifier of intents
 
@@ -180,20 +189,6 @@ def preprocess_text(sentence):
 	return ' '.join(cleaned)
 
 
-'''
-def find_pronoun(sent):
-	#Finds the pronoun to respond with, returns  none if not pronoun was found
-	
-	pronoun = None
-
-	for word, pos in sent.pos_tags:
-		#Disambiguate pronouns
-		if pos == 'PRP' and word.lower() == 'you':
-			pronoun = 'I'
-		elif pos == 'PRP' and word == 'I':
-			pronoun = 'You'
-	return pronoun
-'''
 
 def convert_singular(w):
 	'''Simple huristic to convert a noun into a singular form
@@ -232,19 +227,6 @@ def find_noun(sent):
 				entities.append(w)
 	return entities
 
-
-'''
-def find_adjective(sent):
-	#Find the adjective in sentence 
-	
-
-	adj = None 
-	for w, p in sent.pos_tags:
-		if p == 'JJ':
-			adj = w
-			break
-	return adj 
-'''
 
 def find_verb(sent):
 	''' Returns the verbs as a list
@@ -413,7 +395,6 @@ def find_objects(list_entities, intent, verbs):
 		n_verb = len(verbs)
 		n_entities = len(list_entities)
 
-		
 
 		if n_entities == 2:
 			if "n't" in verbs[:2]: 
@@ -452,7 +433,13 @@ def find_objects(list_entities, intent, verbs):
 
 			ent = convert_singular(ent)
 
-			if df_last_display.empty:
+			#Its a new search 
+			#if df_last_display.empty:
+
+				#If not entities searched yet
+			if len(NOUNS_LAST_SEARCH) == 0:
+
+
 				if ent in BRANDS:
 					left_brands = BRANDS
 					left_brands.remove(ent)
@@ -461,27 +448,57 @@ def find_objects(list_entities, intent, verbs):
 					return result
 
 			else:
-				left_brands = [ x.lower() for x in df_last_display['Brand'].values]
-				left_brands = set(left_brands)
+			
 
-				left_names = []
+				types_prod = LAST_TYPE
+				names_prod = LAST_PROD_NAME
+				names_brand = LAST_BRAND
+
+				if len(types_prod) > 0: 
+					result = df.loc[df['Synonyms'].str.contains(types_prod[0], case=False, regex=False)]
+					
+
+				elif len(names_brand) > 0:
+					result = df.loc[df['Brand'].str.contains(names_brand[0], case=False, regex=False)]
+			
+
+				elif len(names_prod) > 0:
+					result = df.loc[df['Product Name'].str.contains(names_prod[0], case=False, regex=False)]
 
 
-				if ent in left_brands:
+				if ent in BRANDS:
+					left_brands = list(BRANDS)
 					left_brands.remove(ent)
-					result = df_last_display.loc[df_last_display['Brand'].str.contains('|'.join(map(re.escape, left_brands)), case=False)]
-					return result
+					#Found brand that user doesnt like
+					result = result.loc[result['Brand'].str.contains('|'.join(map(re.escape, left_brands)), case=False)]
+					
 
-				left_products = []
-				for prod_name in df_last_display['Product Name'].values:
 
-					if ent not in prod_name.lower():
-						left_products.append(prod_name)
+				elif ent in PRODUCT:
+					new_names = result['Product Name'].values
+					left_names = []
+					for word in new_names:
+						if ent not in word.lower():
+							left_names.append(word)
 
-				if len(left_products) > 0:
-					result = df_last_display.loc[df_last_display['Product Name'].str.contains('|'.join(map(re.escape, left_products)), case=False)]
-					return result
+					result = result.loc[result['Product Name'].str.contains('|'.join(map(re.escape, left_names)), case=False)]
 
+
+				elif ent in PRODUCTS_TYPES:
+					new_types = result['Synonyms'].values
+					left_types = []
+					for word in new_types:
+						if ent not in word:
+							left_types.append(word)
+
+					result = result.loc[result['Synonyms'].str.contains('|'.join(map(re.escape, left_types)), case=False)]
+
+
+				else:
+					return pd.DataFrame()
+
+
+				return result
 
 
 
@@ -489,7 +506,7 @@ def find_objects(list_entities, intent, verbs):
 
 
 
-def do_intent(intent, entities, verbs):
+def do_intent(intent, entities, verbs, new_question):
 	'''
 	Execute the different intents:
 	1: Search by product name
@@ -497,6 +514,13 @@ def do_intent(intent, entities, verbs):
 	3: Search by object tyope 
 	4: Understand dislike and come up with something different
 	'''
+	global LAST_TYPE
+	global LAST_PROD_NAME
+	global LAST_BRAND
+	global NOUNS_LAST_SEARCH
+
+
+	#Return Data Frame with products found
 	products = find_objects(entities, intent, verbs)
 	
 	if products.empty:
@@ -504,14 +528,27 @@ def do_intent(intent, entities, verbs):
 
 	else:
 		display_products(products)
+		
+		last_type = find_synonyms(entities)
+		last_brand = find_brands(entities)
+		last_prod = find_names_in_products(entities)
+
+		if len(entities)>0 and new_question:
+			LAST_TYPE = last_type
+			LAST_BRAND = last_brand
+			LAST_PROD_NAME = last_prod
+
+			NOUNS_LAST_SEARCH = entities
+			VERB_LAST_SERACH = verbs
+		
 		question_interest(products)
+
+
 
 
 def show_all(products):
 	'''It simply displays the product price of the products data frame
 	'''
-
-
 	for name, price in products[['Product Name', 'Subscription Plan']].values:
 			print("Bot: The montly price for " + name + " is: " + str(price) + " .")
 
@@ -589,7 +626,6 @@ def positive_answer(ans):
 	'''
 	ans = ans.lower()
 
-
 	if 'y' in ans and len(ans) < 2:
 		return True
 
@@ -599,12 +635,13 @@ def positive_answer(ans):
 	return False
 
 
+
 def short_negative(ans): #Not, no, not at all
 	'''Check if an answer is negative, it contains a not for answer
 	'''
-	NEG = ['no', 'not', 'nope', 'nop']
+	NEG = ['no', 'not', 'nope', 'nop', "n't"]
 
-	if any(word in ans for word in NEG) and len(ans.split())==1:
+	if any(word in ans for word in NEG):
 		return True
 
 	if ans == 'n':
@@ -613,16 +650,15 @@ def short_negative(ans): #Not, no, not at all
 
 	return False
 
-
-
-
-
 def question_interest(products):
-	''' Find out the interest product from a list of products 
+	''' Find out the interest product from a DataFrame of products. 
 	'''
 	print()
 	print("Bot: Are you interested in any of the products shown y/n?")
 	ans = input("User: ")
+
+
+
 	clean_ans = preprocess_text(ans)
 
 	if positive_answer(ans):
@@ -639,6 +675,8 @@ def question_interest(products):
 	
 		else:
 			print("Bot: In which of the products are you interested?")
+
+
 			ans = input("User: ")
 			clean_ans = preprocess_text(ans)
 			entities = find_noun(clean_ans)
@@ -648,17 +686,18 @@ def question_interest(products):
 				show_all(products)
 
 			elif short_negative(clean_ans) and len(entities) > 0:
-				respond(clean_ans)
+				print("mee")
+				respond(clean_ans, False)
 
 			else:
 				search_price_print(entities, products)
 
 
-	elif short_negative(clean_ans): #its only a no
+	elif short_negative(clean_ans) and len(clean_ans.split()) == 0: #its only a no
 		print("Bot: I am sorry to hear that, we will have more products very soon!")
 
 	else:
-		respond(clean_ans)
+		respond(clean_ans, False)
 
 	
 
@@ -716,11 +755,9 @@ def train_classifier():
 
 
 
-def respond(sentence):
+def respond(sentence, new_question):
 	'''Parse the user's input sentence and find candidate terms the best-fit response'''
 	cleaned = preprocess_text(sentence)
-
-
 
 	#parsed = TextBlob(cleaned)
 	#Loop through all the sentences, if more that one. To extract the most relevant
@@ -730,17 +767,18 @@ def respond(sentence):
 	nouns, verbs = find_pos(cleaned)
 	intent = find_intent(cleaned)
 
+
 	if len(nouns) == 0:
 		print_not_understand()
 	else:
-		do_intent(intent, nouns, verbs)
+		do_intent(intent, nouns, verbs, new_question)
 
 
 def read_process(input_user):
 	global df_last_display
 
 	df_last_display = pd.DataFrame()
-	respond(input_user)
+	respond(input_user, True)
 
 
 	print("")
