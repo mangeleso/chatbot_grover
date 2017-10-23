@@ -5,7 +5,7 @@ Chatbot application that helps you find your interests from a list of products.
 To run just download the two files and run python chatbot.py and you can start playing with it.
 
 
-The chatbot it is programmed to find four different intents:
+The chatbot is programmed to find four different intents:
 
 1. Find by product name. 
 2. Find by brand. 
